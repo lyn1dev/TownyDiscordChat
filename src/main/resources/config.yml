@@ -32,6 +32,9 @@ bridge:
   # Inoltra verso Discord solo i messaggi il cui pubblico è la città Towny,
   # non la chat globale, nazione o altri canali.
   TownChatOnly: true
+  NationChatOnly: true
+  NationMinecraftFormat: "**[MC] %player%:** %message%"
+  NationDiscordFormat: "&8[&2NATION&8] &b%nazione% &8» &7%usernameds% &8» &f%message%"
   # Discord users must be linked and belong to the town whose channel they are using.
   RequireLinkedAccount: true
   RequireCurrentTown: true
@@ -58,11 +61,13 @@ townychat:
   Enabled: true
   ChannelPlaceholder: "%townychat_channel_name%"
   TownChannelNames: ["town"]
+  NationChannelNames: ["nation", "nc"]
   CommandListener:
     Enabled: true
     TownCommands: ["tc", "townchat", "town"]
     LocalCommands: ["l", "lc", "localchat", "local"]
-    OtherCommands: ["g", "global", "globalchat", "nc", "nationchat", "a", "admin", "m", "mod", "chat"]
+    OtherCommands: ["g", "global", "globalchat", "a", "admin", "m", "mod"]
+    NationCommands: ["nc", "nationchat", "nation"]
   LocalNoNearbyPlayersWarning:
     Enabled: true
     ChannelNames: ["local"]

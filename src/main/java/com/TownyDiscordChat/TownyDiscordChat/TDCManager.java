@@ -593,14 +593,19 @@ public final class TDCManager {
             return;
         }
         Town town = townForPublicChannel(channelId);
-        if (town == null || !isTownFeatureEnabled(town, "chat")) {
+        Nation nation = town == null ? nationForPublicChannel(channelId) : null;
+        if (town == null && nation == null) {
             return;
         }
+        if (town != null && !isTownFeatureEnabled(town, "chat")) return;
 
         UUID playerId = DiscordSRV.getPlugin().getAccountLinkManager().getLinkedAccounts().get(discordId);
         boolean mustBeLinked = plugin.configuration().getBoolean("bridge.RequireLinkedAccount", true);
         boolean mustBelongToTown = plugin.configuration().getBoolean("bridge.RequireCurrentTown", true);
-        if ((mustBeLinked && playerId == null) || (mustBelongToTown && (playerId == null || !town.getName().equalsIgnoreCase(nameOf(townFor(playerId)))))) {
+        boolean belongs = town != null
+                ? playerId != null && town.getName().equalsIgnoreCase(nameOf(townFor(playerId)))
+                : playerId != null && nation.getName().equalsIgnoreCase(nationFor(playerId) == null ? null : nationFor(playerId).getName());
+        if ((mustBeLinked && playerId == null) || (mustBelongToTown && !belongs)) {
             TextChannel channel = guild() == null ? null : guild().getTextChannelById(channelId);
             if (channel != null) {
                 channel.sendMessage("⚠️ Collega il tuo account Minecraft e usa il canale della tua città.").queue();
@@ -608,18 +613,19 @@ public final class TDCManager {
             return;
         }
 
-        String template = plugin.configuration().getString("bridge.DiscordFormat", "&8[&2TDC&8] &c%titolo% &8» &7%usernameds% &8» &f%message%");
+        String template = plugin.configuration().getString("bridge." + (town == null ? "NationDiscordFormat" : "DiscordFormat"), "&8[&2TDC&8] &c%titolo% &8» &7%usernameds% &8» &f%message%");
         String marker = "__TDC_LITERAL_DISCORD_MESSAGE__";
         String userMarker = "__TDC_LITERAL_DISCORD_USERNAME__";
         String resolvedTemplate = TDCPlaceholders.resolve(plugin, playerId == null ? null : Bukkit.getOfflinePlayer(playerId),
-                template.replace("%titolo%", town.getName()).replace("%usernameds%", userMarker)
+                template.replace("%titolo%", town == null ? nation.getName() : town.getName()).replace("%nazione%", nation == null ? "" : nation.getName()).replace("%usernameds%", userMarker)
                         .replace("%player%", userMarker).replace("%message%", marker));
         Component formatted = LegacyComponentSerializer.legacySection().deserialize(TDCMessages.colour(resolvedTemplate))
                 .replaceText(TextReplacementConfig.builder().matchLiteral(userMarker)
                         .replacement(Component.text(displayName, NamedTextColor.GRAY)).build())
                 .replaceText(TextReplacementConfig.builder().matchLiteral(marker)
                         .replacement(Component.text(message, NamedTextColor.WHITE)).build());
-        for (Resident resident : town.getResidents()) {
+        Collection<Resident> residents = town != null ? town.getResidents() : nation.getResidents();
+        for (Resident resident : residents) {
             Player recipient = Bukkit.getPlayer(resident.getUUID());
             if (recipient != null && recipient.isOnline()) {
                 recipient.sendMessage(formatted);
@@ -950,6 +956,32 @@ public final class TDCManager {
         renameVoice(guild, oldName, newName, voiceCategory);
     }
 
+    /** Relays nation chat to the matching private nation channel. */
+    public void relayNationMinecraftMessage(Player player, String playerName, String message) {
+        if (!bridgeEnabled("MinecraftToDiscord")) return;
+        Nation nation = nationFor(player.getUniqueId());
+        if (nation == null) return;
+        TextChannel channel = publicTextChannel(nation.getName(), nationTextCategoryId());
+        if (channel == null) { ensureNationResources(nation); return; }
+        String format = plugin.configuration().getString("bridge.NationMinecraftFormat", "**[MC] %player%:** %message%");
+        Map<String, String> values = new LinkedHashMap<>();
+        values.put("player", playerName); values.put("message", message); values.put("nazione", nation.getName()); values.put("nation", nation.getName());
+        channel.sendMessage(configText(format, values, player)).queue();
+    }
+
+    public boolean relayNationMinecraftMessageThroughDiscordSRV(Player player, String message) {
+        if (!bridgeEnabled("MinecraftToDiscord") || !plugin.configuration().getBoolean("interactivechat.UseDiscordSRVAddon", true)
+                || !plugin.getServer().getPluginManager().isPluginEnabled("InteractiveChatDiscordSrvAddon")) return false;
+        Nation nation = nationFor(player.getUniqueId());
+        if (nation == null) return true;
+        TextChannel channel = publicTextChannel(nation.getName(), nationTextCategoryId());
+        if (channel == null) { ensureNationResources(nation); return true; }
+        String gameChannel = "tdc-nation-" + normalise(nation.getName());
+        DiscordSRV.getPlugin().getChannels().put(gameChannel, channel.getId());
+        try { DiscordSRV.getPlugin().processChatMessage(player, message, gameChannel, false); return true; }
+        catch (RuntimeException error) { warn("Could not delegate nation chat for " + nation.getName(), error); return false; }
+    }
+
     private boolean hasRoleOverride(github.scarsz.discordsrv.dependencies.jda.api.entities.GuildChannel channel, String roleId) {
         return channel.getRolePermissionOverrides().stream()
                 .map(PermissionOverride::getRole).filter(java.util.Objects::nonNull)
@@ -987,6 +1019,14 @@ public final class TDCManager {
         return null;
     }
 
+    private Nation nationForPublicChannel(String channelId) {
+        for (Nation nation : TownyUniverse.getInstance().getNations()) {
+            TextChannel channel = publicTextChannel(nation.getName(), nationTextCategoryId());
+            if (channel != null && channel.getId().equals(channelId)) return nation;
+        }
+        return null;
+    }
+
     private TextChannel publicTextChannel(String name, String categoryId) {
         Guild guild = guild();
         if (guild == null) return null;
@@ -1011,6 +1051,11 @@ public final class TDCManager {
         } catch (NotRegisteredException ignored) {
             return null;
         }
+    }
+
+    private Nation nationFor(UUID playerId) {
+        Town town = townFor(playerId);
+        return nationFor(town);
     }
 
     /**

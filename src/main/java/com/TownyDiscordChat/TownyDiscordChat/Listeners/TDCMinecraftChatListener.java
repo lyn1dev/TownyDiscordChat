@@ -55,6 +55,11 @@ public final class TDCMinecraftChatListener implements Listener {
                     plugin.manager().relayMinecraftMessage(playerId, playerName, discordText);
                     plugin.manager().relayInteractiveChatItems(playerId, playerName, items);
                 }
+            } else if (isConfiguredChannel(channel, "townychat.NationChannelNames")) {
+                String discordText = restoreInteractiveChatPlaceholders(text);
+                if (!plugin.manager().relayNationMinecraftMessageThroughDiscordSRV(player, discordText)) {
+                    plugin.manager().relayNationMinecraftMessage(player, playerName, discordText);
+                }
             } else if (isConfiguredChannel(channel, "townychat.LocalNoNearbyPlayersWarning.ChannelNames")) {
                 warnLocalChatIfAlone(player);
             }
@@ -106,6 +111,9 @@ public final class TDCMinecraftChatListener implements Listener {
         if (matchesCommand(command, "townychat.CommandListener.TownCommands")
                 || channelArgumentMatches(parts, "townychat.TownChannelNames")) {
             channelHints.put(playerId, configuredPrimaryName("townychat.TownChannelNames", "town"));
+        } else if (matchesCommand(command, "townychat.CommandListener.NationCommands")
+                || channelArgumentMatches(parts, "townychat.NationChannelNames")) {
+            channelHints.put(playerId, configuredPrimaryName("townychat.NationChannelNames", "nation"));
         } else if (matchesCommand(command, "townychat.CommandListener.LocalCommands")
                 || channelArgumentMatches(parts, "townychat.LocalNoNearbyPlayersWarning.ChannelNames")) {
             channelHints.put(playerId, configuredPrimaryName("townychat.LocalNoNearbyPlayersWarning.ChannelNames", "local"));

@@ -9,6 +9,7 @@ import github.scarsz.discordsrv.api.events.GameChatMessagePreProcessEvent;
 /** Reconciles an account as soon as DiscordSRV completes its link flow. */
 public final class TDCDiscordSRVListener {
     private static final String TDC_CHANNEL_PREFIX = "tdc-town-";
+    private static final String TDC_NATION_PREFIX = "tdc-nation-";
     private final Main plugin;
     private final TDCMinecraftChatListener minecraftChatListener;
 
@@ -27,13 +28,14 @@ public final class TDCDiscordSRVListener {
     }
 
     /**
-     * DiscordSRV's generic Paper listener treats every modern chat message as
-     * global. TownyDiscordChat sends town chat through a dedicated virtual
-     * channel, so reject every generic copy (including global/nation chat).
+     * DiscordSRV's generic Paper listener treats town chat as global. Cancel
+     * only the duplicate town copy; global and nation chat remain available
+     * through DiscordSRV's normal global channel.
      */
     @Subscribe(priority = ListenerPriority.LOWEST)
     public void onGameChatMessage(GameChatMessagePreProcessEvent event) {
-        if (event.isCancelled() || (event.getChannel() != null && event.getChannel().startsWith(TDC_CHANNEL_PREFIX))) return;
-        event.setCancelled(true);
+        if (event.isCancelled() || (event.getChannel() != null &&
+                (event.getChannel().startsWith(TDC_CHANNEL_PREFIX) || event.getChannel().startsWith(TDC_NATION_PREFIX)))) return;
+        if (minecraftChatListener.isCurrentTownChannel(event.getPlayer())) event.setCancelled(true);
     }
 }
