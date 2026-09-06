@@ -1,4 +1,4 @@
-[CENTER][SIZE=6][B]TownyDiscordChat 3.2.3[/B][/SIZE]
+[CENTER][SIZE=6][B]TownyDiscordChat 3.2.4[/B][/SIZE]
 [SIZE=4]Towny Advanced [COLOR=#5865F2]↔[/COLOR] DiscordSRV bridge for Paper and Purpur[/SIZE]
 
 [URL='https://github.com/smokytek/TownyDiscordChat']GitHub source[/URL] · [URL='https://www.spigotmc.org/resources/townydiscordchat.91026/']Original inspiration[/URL][/CENTER]
