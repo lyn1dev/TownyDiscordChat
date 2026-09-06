@@ -6,6 +6,7 @@ import com.TownyDiscordChat.TownyDiscordChat.TDCMessages;
 import com.TownyDiscordChat.TownyDiscordChat.TDCPlaceholders;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.event.EventHandler;
@@ -49,6 +50,13 @@ public final class TDCMinecraftChatListener implements Listener {
             if (player == null) return;
             String channel = currentTownyChatChannel(player);
             if (isConfiguredChannel(channel, "townychat.TownChannelNames")) {
+                Set<UUID> recipients = new HashSet<>();
+                for (Audience viewer : event.viewers()) {
+                    if (viewer instanceof Player recipient) recipients.add(recipient.getUniqueId());
+                }
+                // A stale channel hint must never route a global message into
+                // the town channel. TownyChat's actual viewer set is authoritative.
+                if (!recipients.isEmpty() && !plugin.manager().isTownChatAudience(playerId, recipients)) return;
                 String discordText = restoreInteractiveChatPlaceholders(text);
                 boolean delegated = plugin.manager().relayMinecraftMessageThroughDiscordSRV(player, discordText);
                 if (!delegated) {
