@@ -1,4 +1,4 @@
-# TownyDiscordChat 3.2.2
+# TownyDiscordChat 3.2.3
 
 TownyDiscordChat is a Paper/Purpur bridge between Towny Advanced and DiscordSRV. It creates private town and nation resources, provides a town-only two-way chat bridge, keeps linked accounts synchronized, and publishes configurable Towny activity to Discord.
 
@@ -91,7 +91,7 @@ All bridge formats, embed titles, descriptions, fields, buttons, event messages,
 mvn clean package
 ```
 
-The artifact is generated as `target/TownyDiscordChat-3.2.2-1.21+-26+.jar`.
+The artifact is generated as `target/TownyDiscordChat-3.2.3-1.21+-26+.jar`.
 
 ## Inspiration and credits
 
