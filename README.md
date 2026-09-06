@@ -1,6 +1,6 @@
 # TownyDiscordChat 3.2.3
 
-TownyDiscordChat is a Paper/Purpur bridge between Towny Advanced and DiscordSRV. It creates private town and nation resources, provides a town-only two-way chat bridge, keeps linked accounts synchronized, and publishes configurable Towny activity to Discord.
+TownyDiscordChat is a Paper/Purpur bridge between Towny Advanced and DiscordSRV. It creates private town and nation resources, provides separate town and nation two-way chat bridges, keeps linked accounts synchronized, and publishes configurable Towny activity to Discord.
 
 ## Compatibility
 
@@ -27,6 +27,8 @@ Optional soft-dependencies:
 
 - Automatically creates and synchronizes `town-<name>` and `nation-<name>` roles, text channels and voice channels.
 - Town-only Minecraft ↔ Discord chat bridge with linked-account and wrong-town protection.
+- Nation Minecraft ↔ Discord chat bridge with nation-membership validation and configurable nation/nc channel detection.
+- DiscordSRV global chat remains available normally; TownyDiscordChat only intercepts messages explicitly detected as Towny town or nation chat.
 - Sends town notifications in the main town channel; no separate staff channel is required.
 - Configurable bank embeds with transaction type, amount, balance, actor, reason and PlaceholderAPI values.
 - Town events for residents joining/leaving, mayor changes, rank changes, jail, outlaw and tax changes.
@@ -80,6 +82,8 @@ On first start, the plugin copies the five locale files to `plugins/TownyDiscord
 ## Configuration
 
 All bridge formats, embed titles, descriptions, fields, buttons, event messages, PlaceholderAPI placeholders, Dynmap settings and feature toggles are configurable in `config.yml`. Native placeholders include `%town%`, `%mayor%`, `%message%`, `%actor%`, `%resident%`, `%rank%`, `%tax%`, `%balance%` and `%reason%`.
+
+TownyChat detection can be configured with `townychat.TownChannelNames` and `townychat.NationChannelNames`. Nation messages use `bridge.NationMinecraftFormat` and `bridge.NationDiscordFormat`.
 
 ## Permissions
 

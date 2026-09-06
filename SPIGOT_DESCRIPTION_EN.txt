@@ -3,12 +3,14 @@
 
 [URL='https://github.com/smokytek/TownyDiscordChat']GitHub source[/URL] · [URL='https://www.spigotmc.org/resources/townydiscordchat.91026/']Original inspiration[/URL][/CENTER]
 
-[B]TownyDiscordChat[/B] connects Towny Advanced towns and nations to DiscordSRV. It creates private Discord resources, provides a secure town-only chat bridge, synchronizes linked accounts and publishes useful Towny activity in rich embeds.
+[B]TownyDiscordChat[/B] connects Towny Advanced towns and nations to DiscordSRV. It creates private Discord resources, provides secure town and nation chat bridges, synchronizes linked accounts and publishes useful Towny activity in rich embeds.
 
 [SIZE=5][B]Highlights[/B][/SIZE]
 [LIST]
 [*][B]Town and nation resources:[/B] roles, private text channels and voice channels created and synchronized automatically.
 [*][B]Town-only bridge:[/B] Minecraft town chat goes to the matching Discord channel and Discord messages go only to online residents of that town.
+[*][B]Nation bridge:[/B] Minecraft nation chat goes to the matching nation channel and Discord messages are delivered only to online members of that nation.
+[*][B]Global chat compatibility:[/B] DiscordSRV continues to handle global chat normally; TownyDiscordChat intercepts only messages detected as `town` or `nation` chat.
 [*][B]Security:[/B] linked-account validation, wrong-town protection and Discord administrator overrides.
 [*][B]No staff channel:[/B] town notifications are delivered in the normal town channel.
 [*][B]Bank embeds:[/B] deposits, withdrawals, taxes, balances, actors and reasons with configurable fields.
@@ -70,6 +72,16 @@ bridge:
   RequireCurrentTown: true
   MinecraftFormat: "**[MC] %player%:** %message%"
   DiscordFormat: "&8[&2TDC&8] &c%titolo% &8» &7%usernameds% &8» &f%message%"
+  NationMinecraftFormat: "**[MC] %player%:** %message%"
+  NationDiscordFormat: "&8[&2NATION&8] &b%nazione% &8» &7%usernameds% &8» &f%message%"
+
+townychat:
+  TownChannelNames: ["town"]
+  NationChannelNames: ["nation", "nc"]
+  CommandListener:
+    TownCommands: ["tc", "townchat", "town"]
+    NationCommands: ["nc", "nationchat", "nation"]
+    OtherCommands: ["g", "global", "globalchat", "a", "admin", "m", "mod"]
 
 messages:
   DailySummaryButtons:
