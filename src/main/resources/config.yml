@@ -47,7 +47,7 @@ bridge:
   NationChatOnly: true
   NationMinecraftFormat: "**%player%:** %message%"
   # %titolo% = the nation name, %usernameds% = the Discord name, %message% = the message.
-  NationDiscordFormat: "&#F2B84B[Nation] &#7289DA[#] &f%usernameds%&8: &#F9DDA0%message%"
+  NationDiscordFormat: "&#F2B84B[Nation] &#7289DA[#] &f%usernameds% &8› &#F9DDA0%message%"
   # Discord users must be linked and belong to the town whose channel they are using.
   RequireLinkedAccount: true
   RequireCurrentTown: true
@@ -55,7 +55,7 @@ bridge:
   RemoveUnsupportedDiscordEmoji: true
   MinecraftFormat: "**%player%:** %message%"
   # %titolo% = the town name, %usernameds% = the Discord name, %message% = the message.
-  DiscordFormat: "&#6CC456[Town] &#7289DA[#] &f%usernameds%&8: &#B9F6A8%message%"
+  DiscordFormat: "&#6CC456[Town] &#7289DA[#] &f%usernameds% &8› &#B9F6A8%message%"
 
 # Settings the mayor or an assistant can change with /town discord newday|chat|jail enable|disable
 townFeatures:
