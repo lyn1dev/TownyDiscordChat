@@ -647,6 +647,9 @@ public final class TDCManager {
             return;
         }
 
+        // linked users show up in game under their Minecraft name
+        String linkedName = playerId == null ? null : Bukkit.getOfflinePlayer(playerId).getName();
+        String shownName = linkedName != null ? linkedName : displayName;
         String template = plugin.configuration().getString("bridge." + (town == null ? "NationDiscordFormat" : "DiscordFormat"), "&8[&2TDC&8] &c%titolo% &8» &7%usernameds% &8» &f%message%");
         String marker = "__TDC_LITERAL_DISCORD_MESSAGE__";
         String userMarker = "__TDC_LITERAL_DISCORD_USERNAME__";
@@ -655,7 +658,7 @@ public final class TDCManager {
                         .replace("%player%", userMarker).replace("%message%", marker));
         Component formatted = LegacyComponentSerializer.legacySection().deserialize(TDCMessages.colour(resolvedTemplate))
                 .replaceText(TextReplacementConfig.builder().matchLiteral(userMarker)
-                        .replacement(Component.text(displayName, NamedTextColor.GRAY)).build())
+                        .replacement(Component.text(shownName, NamedTextColor.GRAY)).build())
                 .replaceText(TextReplacementConfig.builder().matchLiteral(marker)
                         .replacement(Component.text(message, NamedTextColor.WHITE)).build());
         Collection<Resident> residents = town != null ? town.getResidents() : nation.getResidents();
