@@ -656,11 +656,14 @@ public final class TDCManager {
         String resolvedTemplate = TDCPlaceholders.resolve(plugin, playerId == null ? null : Bukkit.getOfflinePlayer(playerId),
                 template.replace("%titolo%", town == null ? nation.getName() : town.getName()).replace("%nazione%", nation == null ? "" : nation.getName()).replace("%usernameds%", userMarker)
                         .replace("%player%", userMarker).replace("%message%", marker));
-        Component formatted = LegacyComponentSerializer.legacySection().deserialize(TDCMessages.colour(resolvedTemplate))
+        // &#RRGGBB colours work too; the name and message take the colour the format gives them
+        String legacy = TDCMessages.colour(resolvedTemplate).replaceAll("&(#[0-9A-Fa-f]{6})", LegacyComponentSerializer.SECTION_CHAR + "$1");
+        Component formatted = LegacyComponentSerializer.builder().character(LegacyComponentSerializer.SECTION_CHAR).hexColors().build()
+                .deserialize(legacy)
                 .replaceText(TextReplacementConfig.builder().matchLiteral(userMarker)
-                        .replacement(Component.text(shownName, NamedTextColor.GRAY)).build())
+                        .replacement(Component.text(shownName)).build())
                 .replaceText(TextReplacementConfig.builder().matchLiteral(marker)
-                        .replacement(Component.text(message, NamedTextColor.WHITE)).build());
+                        .replacement(Component.text(message)).build());
         Collection<Resident> residents = town != null ? town.getResidents() : nation.getResidents();
         for (Resident resident : residents) {
             Player recipient = Bukkit.getPlayer(resident.getUUID());
