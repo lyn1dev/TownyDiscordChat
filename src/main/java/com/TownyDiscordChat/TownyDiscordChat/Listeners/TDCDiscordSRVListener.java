@@ -4,6 +4,7 @@ import com.TownyDiscordChat.TownyDiscordChat.Main;
 import github.scarsz.discordsrv.api.Subscribe;
 import github.scarsz.discordsrv.api.ListenerPriority;
 import github.scarsz.discordsrv.api.events.AccountLinkedEvent;
+import github.scarsz.discordsrv.api.events.AccountUnlinkedEvent;
 import github.scarsz.discordsrv.api.events.GameChatMessagePreProcessEvent;
 import github.scarsz.discordsrv.api.events.DiscordGuildMessagePreProcessEvent;
 import github.scarsz.discordsrv.DiscordSRV;
@@ -34,6 +35,12 @@ public final class TDCDiscordSRVListener {
      * only the duplicate town copy; global and nation chat remain available
      * through DiscordSRV's normal global channel.
      */
+    @Subscribe
+    public void onAccountUnlinked(AccountUnlinkedEvent event) {
+        String discordId = event.getDiscordId();
+        plugin.getServer().getScheduler().runTask(plugin, () -> plugin.manager().removeAllAccess(discordId));
+    }
+
     @Subscribe(priority = ListenerPriority.LOWEST)
     public void onGameChatMessage(GameChatMessagePreProcessEvent event) {
         if (event.isCancelled() || (event.getChannel() != null &&

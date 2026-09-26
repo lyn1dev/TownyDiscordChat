@@ -115,7 +115,7 @@ public final class TDCManager {
         Category parent = channel.getParent();
         if (sharedCategory()) {
             if (!isManagedCategory(parent)) return false;
-            boolean ours = channel.getRolePermissionOverrides().stream().map(PermissionOverride::getRole)
+            boolean ours = !rolesEnabled() || channel.getRolePermissionOverrides().stream().map(PermissionOverride::getRole)
                     .filter(java.util.Objects::nonNull).anyMatch(this::isManagedRole);
             if (!ours) return false;
             String channelName = normalise(channel.getName());
@@ -135,6 +135,10 @@ public final class TDCManager {
     }
 
     public void synchroniseAllLinkedAccounts() {
+        if (!rolesEnabled()) {
+            synchroniseAllResources();
+            return;
+        }
         Map<String, UUID> linked = DiscordSRV.getPlugin().getAccountLinkManager().getLinkedAccounts();
         linked.forEach((discordId, playerId) -> synchronisePlayer(discordId, playerId));
     }
@@ -151,6 +155,21 @@ public final class TDCManager {
     public void synchronisePlayer(String discordId, UUID playerId) {
         Guild guild = guild();
         if (guild == null) {
+            return;
+        }
+        if (!rolesEnabled()) {
+            Town town = townFor(playerId);
+            Nation nation = town == null ? null : nationFor(town);
+            Set<String> keep = new HashSet<>();
+            if (town != null) {
+                keep.add(normalise(nm(town.getName(), townTextCategoryId())));
+                ensureTownResources(town);
+            }
+            if (nation != null) {
+                keep.add(normalise(nm(nation.getName(), nationTextCategoryId())));
+                ensureNationResources(nation);
+            }
+            removeAccessExcept(discordId, keep);
             return;
         }
         Member member = guild.getMemberById(discordId);
@@ -459,7 +478,7 @@ public final class TDCManager {
                     + "Balance: **" + String.format(Locale.ROOT, "%.2f", town.getAccount().getHoldingBalance()) + "**";
             case "sync" -> {
                 synchronisePlayer(playerId);
-                yield "✅ Your Discord roles are synced.";
+                yield "✅ Your town and nation channels are up to date.";
             }
             case "notice" -> {
                 if (!isTownOfficer(town, playerId)) yield TDCMessages.tr(plugin, "commands.notice_denied");
@@ -808,7 +827,10 @@ public final class TDCManager {
         return expected;
     }
 
+    private boolean rolesEnabled() { return plugin.configuration().getBoolean("roles.Enabled", false); }
+
     private CompletableFuture<Role> ensureRole(String roleName, boolean townRole) {
+        if (!rolesEnabled()) return CompletableFuture.completedFuture(null);
         Guild guild = guild();
         if (guild == null) {
             return CompletableFuture.failedFuture(new IllegalStateException("Discord guild unavailable"));
@@ -840,7 +862,55 @@ public final class TDCManager {
     }
 
     private CompletableFuture<TextChannel> ensurePublicTextChannel(String name, String categoryId, Role role) {
-        return ensureTextChannel(name, categoryId, role, Set.of());
+        return ensureTextChannel(name, categoryId, role, rolesEnabled() ? Set.of() : linkedMemberIds(name, categoryId));
+    }
+
+    private boolean isNationCategory(String categoryId) {
+        return SHARED_NATION.equals(categoryId) || (!isShared(categoryId) && categoryId != null
+                && categoryId.equals(nationTextCategoryId()) && !categoryId.equals(townTextCategoryId()));
+    }
+
+    /** Discord ids of the linked residents of the town (or nation) whose channel this is. */
+    private Set<String> linkedMemberIds(String name, String categoryId) {
+        Set<String> ids = new HashSet<>();
+        Collection<Resident> residents;
+        if (isNationCategory(categoryId)) {
+            Nation nation = TownyUniverse.getInstance().getNation(name);
+            residents = nation == null ? List.of() : nation.getResidents();
+        } else {
+            Town town = TownyUniverse.getInstance().getTown(name);
+            residents = town == null ? List.of() : town.getResidents();
+        }
+        for (Resident resident : residents) {
+            if (resident.isNPC()) continue;
+            String discordId = DiscordSRV.getPlugin().getAccountLinkManager().getDiscordId(resident.getUUID());
+            if (discordId != null) ids.add(discordId);
+        }
+        return ids;
+    }
+
+    /** A town-/nation- channel in the shared category (without roles, that's what makes a channel ours). */
+    private boolean isManagedChannel(github.scarsz.discordsrv.dependencies.jda.api.entities.GuildChannel channel) {
+        if (!isManagedCategory(channel.getParent())) return false;
+        String name = normalise(channel.getName());
+        return name.startsWith(TOWN_PREFIX) || name.startsWith(NATION_PREFIX);
+    }
+
+    /** Takes a Discord user out of every managed channel except the ones named in keep. */
+    private void removeAccessExcept(String discordId, Set<String> keep) {
+        Guild guild = guild();
+        if (guild == null) return;
+        for (TextChannel channel : guild.getTextChannels()) {
+            if (!isManagedChannel(channel) || keep.contains(normalise(channel.getName()))) continue;
+            for (PermissionOverride override : channel.getMemberPermissionOverrides()) {
+                if (override.getId().equals(discordId)) override.delete().queue();
+            }
+        }
+    }
+
+    /** After an account is unlinked: out of every town and nation channel. */
+    public void removeAllAccess(String discordId) {
+        if (!rolesEnabled()) removeAccessExcept(discordId, Set.of());
     }
 
     /** Deletes legacy staff channels created by older releases, regardless of their former category. */
@@ -928,16 +998,27 @@ public final class TDCManager {
 
     private void updateMemberAccess(TextChannel channel, Set<String> officers) {
         Guild guild = channel.getGuild();
+        String self = guild.getSelfMember().getId();
+        Set<String> already = new HashSet<>();
         for (PermissionOverride override : channel.getMemberPermissionOverrides()) {
-            Member member = override.getMember();
-            if (member != null && !member.equals(guild.getSelfMember()) && !officers.contains(member.getId())) {
+            String id = override.getId();
+            if (id.equals(self)) continue;
+            if (!officers.contains(id)) {
                 override.delete().queue();
+            } else if (override.getAllowed().contains(Permission.VIEW_CHANNEL)) {
+                already.add(id);
             }
         }
         for (String memberId : officers) {
+            if (already.contains(memberId)) continue;
             Member member = guild.getMemberById(memberId);
             if (member != null) {
                 channel.upsertPermissionOverride(member).setAllow(Permission.VIEW_CHANNEL).queue();
+            } else {
+                // not cached: look them up (and skip anyone who isn't in the Discord server)
+                guild.retrieveMemberById(memberId).queue(
+                        found -> channel.upsertPermissionOverride(found).setAllow(Permission.VIEW_CHANNEL).queue(),
+                        ignored -> { });
             }
         }
     }

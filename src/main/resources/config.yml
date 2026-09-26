@@ -8,6 +8,12 @@ category:
   Shared: true
   Name: "Towns & Nations"
 
+# Meridian fork: no Discord roles. The bot only creates the category and the channels, and lets each linked member of
+# a town or nation see that one channel with a permission on the channel itself (added and removed as they join and
+# leave). Set Enabled: true for the original role-based setup (a town-/nation- role per town and nation).
+roles:
+  Enabled: false
+
 nation:
   CreateTextChannelForRole: true
   CreateVoiceChannelForRole: false
