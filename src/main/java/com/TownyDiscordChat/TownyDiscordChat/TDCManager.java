@@ -544,7 +544,7 @@ public final class TDCManager {
      * Routes town chat through DiscordSRV so InteractiveChatDiscordSrvAddon can
      * replace [item], [inv] and similar placeholders with its rendered embeds.
      */
-    public boolean relayMinecraftMessageThroughDiscordSRV(Player player, String message) {
+    public boolean relayMinecraftMessageThroughDiscordSRV(Player player, Object message) {
         if (!bridgeEnabled("MinecraftToDiscord")
                 || !plugin.configuration().getBoolean("interactivechat.UseDiscordSRVAddon", true)
                 || !plugin.getServer().getPluginManager().isPluginEnabled("InteractiveChatDiscordSrvAddon")) {
@@ -560,7 +560,7 @@ public final class TDCManager {
         String gameChannel = "tdc-town-" + normalise(town.getName());
         DiscordSRV.getPlugin().getChannels().put(gameChannel, channel.getId());
         try {
-            DiscordSRV.getPlugin().processChatMessage(player, message, gameChannel, false);
+            processChat(player, message, gameChannel);
             return true;
         } catch (RuntimeException error) {
             warn("Could not delegate InteractiveChat message for " + town.getName(), error);
@@ -987,7 +987,7 @@ public final class TDCManager {
         channel.sendMessage(configText(format, values, player)).queue();
     }
 
-    public boolean relayNationMinecraftMessageThroughDiscordSRV(Player player, String message) {
+    public boolean relayNationMinecraftMessageThroughDiscordSRV(Player player, Object message) {
         if (!bridgeEnabled("MinecraftToDiscord") || !plugin.configuration().getBoolean("interactivechat.UseDiscordSRVAddon", true)
                 || !plugin.getServer().getPluginManager().isPluginEnabled("InteractiveChatDiscordSrvAddon")) return false;
         Nation nation = nationFor(player.getUniqueId());
@@ -996,8 +996,17 @@ public final class TDCManager {
         if (channel == null) { ensureNationResources(nation); return true; }
         String gameChannel = "tdc-nation-" + normalise(nation.getName());
         DiscordSRV.getPlugin().getChannels().put(gameChannel, channel.getId());
-        try { DiscordSRV.getPlugin().processChatMessage(player, message, gameChannel, false); return true; }
+        try { processChat(player, message, gameChannel); return true; }
         catch (RuntimeException error) { warn("Could not delegate nation chat for " + nation.getName(), error); return false; }
+    }
+
+    /** Text, or a (DiscordSRV-shaded) chat component whose hover events the InteractiveChat addon can render. */
+    private void processChat(Player player, Object message, String gameChannel) {
+        if (message instanceof github.scarsz.discordsrv.dependencies.kyori.adventure.text.Component component) {
+            DiscordSRV.getPlugin().processChatMessage(player, component, gameChannel, false);
+        } else {
+            DiscordSRV.getPlugin().processChatMessage(player, String.valueOf(message), gameChannel, false);
+        }
     }
 
     private boolean hasRoleOverride(github.scarsz.discordsrv.dependencies.jda.api.entities.GuildChannel channel, String roleId) {
