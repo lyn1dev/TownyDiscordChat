@@ -182,7 +182,7 @@ public final class TDCMinecraftChatListener implements Listener {
                 float pitch = (float) Math.max(0D, plugin.configuration().getDouble("townychat.LocalNoNearbyPlayersWarning.SoundPitch", 1D));
                 player.playSound(player.getLocation(), sound, volume, pitch);
             } catch (IllegalArgumentException ignored) {
-                plugin.getLogger().warning("Suono non valido per l'avviso chat locale: " + soundName);
+                plugin.getLogger().warning("Invalid sound for the local chat warning: " + soundName);
             }
         }
     }

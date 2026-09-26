@@ -33,22 +33,22 @@ public final class DynmapTownMapRenderer {
     public static String validateDynmapWorld(String worldName) {
         Plugin dynmap = Bukkit.getPluginManager().getPlugin("dynmap");
         if (dynmap == null || !dynmap.isEnabled()) {
-            return "Dynmap non è installato o non è attivo.";
+            return "Dynmap isn't installed or isn't running.";
         }
         try {
             Class<?> apiClass = Class.forName("org.dynmap.DynmapAPI", false, dynmap.getClass().getClassLoader());
             if (!apiClass.isInstance(dynmap)) {
-                return "l'installazione Dynmap non espone la sua API pubblica.";
+                return "this Dynmap install doesn't expose its public API.";
             }
             Method getWorld = apiClass.getMethod("getWorld", String.class);
             if (getWorld.invoke(dynmap, worldName) == null) {
-                return "Dynmap non ha una mappa per il mondo `" + worldName + "`.";
+                return "Dynmap has no map for the world `" + worldName + "`.";
             }
             return null;
         } catch (ClassNotFoundException ignored) {
-            return "l'installazione Dynmap non espone la sua API pubblica.";
+            return "this Dynmap install doesn't expose its public API.";
         } catch (ReflectiveOperationException exception) {
-            return "non è stato possibile interrogare l'API Dynmap: " + exception.getClass().getSimpleName() + ".";
+            return "couldn't query the Dynmap API: " + exception.getClass().getSimpleName() + ".";
         }
     }
 
@@ -103,7 +103,7 @@ public final class DynmapTownMapRenderer {
         }
         if (loaded == 0) {
             graphics.dispose();
-            return Result.error("Dynmap non ha restituito tile. Verifica WebUrl, MapPrefix e MapX/MapY nel config.");
+            return Result.error("Dynmap returned no tiles. Check WebUrl, MapPrefix and MapX/MapY in the config.");
         }
         drawOverlay(graphics, side, request.town());
         graphics.dispose();
@@ -114,7 +114,7 @@ public final class DynmapTownMapRenderer {
             ImageIO.write(output, "png", image.toFile());
             return Result.image(image, request.town(), loaded);
         } catch (IOException exception) {
-            return Result.error("Non riesco a salvare l'immagine Dynmap: " + exception.getClass().getSimpleName() + ".");
+            return Result.error("Couldn't save the Dynmap image: " + exception.getClass().getSimpleName() + ".");
         }
     }
 

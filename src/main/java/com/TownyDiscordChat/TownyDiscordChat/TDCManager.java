@@ -58,6 +58,10 @@ public final class TDCManager {
     private final Main plugin;
     private final Map<String, CompletableFuture<Role>> pendingRoles = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<TextChannel>> pendingChannels = new ConcurrentHashMap<>();
+    // Meridian: one shared category for all town and nation channels (category.Shared in config.yml)
+    private static final String SHARED_TOWN = "@town", SHARED_NATION = "@nation";
+    private static final int CATEGORY_LIMIT = 50;
+    private final java.util.concurrent.atomic.AtomicReference<CompletableFuture<Category>> creatingCategory = new java.util.concurrent.atomic.AtomicReference<>();
     private final Map<String, Integer> lastTownFallVariant = new ConcurrentHashMap<>();
 
     public TDCManager(Main plugin) {
@@ -109,6 +113,16 @@ public final class TDCManager {
     private boolean isObsoleteManagedChannel(github.scarsz.discordsrv.dependencies.jda.api.entities.GuildChannel channel,
                                               Set<String> towns, Set<String> nations) {
         Category parent = channel.getParent();
+        if (sharedCategory()) {
+            if (!isManagedCategory(parent)) return false;
+            boolean ours = channel.getRolePermissionOverrides().stream().map(PermissionOverride::getRole)
+                    .filter(java.util.Objects::nonNull).anyMatch(this::isManagedRole);
+            if (!ours) return false;
+            String channelName = normalise(channel.getName());
+            if (channelName.startsWith(TOWN_PREFIX)) return !towns.contains(channelName.substring(TOWN_PREFIX.length()));
+            if (channelName.startsWith(NATION_PREFIX)) return !nations.contains(channelName.substring(NATION_PREFIX.length()));
+            return false;
+        }
         String categoryId = parent == null ? null : parent.getId();
         boolean townCategory = categoryId != null && (categoryId.equals(townTextCategoryId()) || categoryId.equals(townVoiceCategoryId()));
         boolean nationCategory = categoryId != null && (categoryId.equals(nationTextCategoryId()) || categoryId.equals(nationVoiceCategoryId()));
@@ -216,7 +230,7 @@ public final class TDCManager {
         String format = plugin.configuration().getString("messages.TownCreated.Format", "🏙️ **Fondazione:** %towny_message%");
         Map<String, String> values = new LinkedHashMap<>();
         values.put("town", town.getName());
-        values.put("mayor", mayor == null ? "Nessuno" : mayor.getName());
+        values.put("mayor", mayor == null ? "Nobody" : mayor.getName());
         values.put("towny_message", townyMessage);
         org.bukkit.OfflinePlayer context = mayor == null ? null : Bukkit.getOfflinePlayer(mayor.getUUID());
         sendTownNotification(town, configText(format, values, context));
@@ -236,8 +250,8 @@ public final class TDCManager {
         }
         Resident mayor = town.getMayor();
         Nation nation = nationFor(town);
-        return new TownFallSnapshot(town.getName(), mayor == null ? "Nessuno" : mayor.getName(),
-                mayor == null ? null : mayor.getUUID(), nation == null ? "Nessuna" : nation.getName(),
+        return new TownFallSnapshot(town.getName(), mayor == null ? "Nobody" : mayor.getName(),
+                mayor == null ? null : mayor.getUUID(), nation == null ? "None" : nation.getName(),
                 citizens, realResidents.size(), town.getAccount().getHoldingBalance(), estimatedTownValue(town),
                 residentWealth, realResidents.isEmpty() ? 0D : residentWealth / realResidents.size(),
                 town.getTownBlocks().size(), town.getTaxes(), townUpkeep(town), town.isRuined(), town.isBankrupt());
@@ -256,12 +270,12 @@ public final class TDCManager {
         String amountFormat = plugin.configuration().getString(root + ".AmountFormat", "%.2f");
         List<String> variants = plugin.configuration().getStringList(root + ".Variants");
         String story = variants.isEmpty()
-                ? "Dopo un'ultima notte difficile, **%town%** non è più la città di ieri."
+                ? "After one last hard night, **%town%** is no longer the town it was."
                 : variants.get(selectTownFallVariant(before.town(), variants.size()));
         String causeKey = cause == null ? "fallen" : cause.toLowerCase(Locale.ROOT);
         String status = plugin.configuration().getString(root + ".CauseLabels." + causeKey,
                 switch (causeKey) {
-                    case "bankrupt" -> "Bancarotta";
+                    case "bankrupt" -> "Bankruptcy";
                     case "ruined" -> "Rovina";
                     default -> "Caduta";
                 });
@@ -275,7 +289,7 @@ public final class TDCManager {
         values.put("status", status);
         values.put("story", story);
         values.put("residents", String.valueOf(before.residentCount()));
-        values.put("citizens", highlighted.isEmpty() ? "nessun cittadino registrato" : String.join(", ", highlighted));
+        values.put("citizens", highlighted.isEmpty() ? "no residents on record" : String.join(", ", highlighted));
         values.put("citizen_one", highlighted.isEmpty() ? before.mayor() : highlighted.getFirst());
         values.put("citizen_two", highlighted.size() < 2 ? before.mayor() : highlighted.get(1));
         values.put("balance_before", formatMoney(before.balance(), amountFormat));
@@ -331,8 +345,8 @@ public final class TDCManager {
     public void sendTownBankEmbed(Town town, String type, double amount, String actor, String reason) {
         if (areTownChannelsDisabled(town.getName())) return;
         if (!plugin.configuration().getBoolean("messages.BankEmbed.Enabled", true)) {
-            sendTownNotification(town, "💰 **Banca città:** " + type + " `" + amount + "` da " + actor
-                    + " · saldo: `" + town.getAccount().getHoldingBalance() + "`");
+            sendTownNotification(town, "💰 **Town bank:** " + type + " `" + amount + "` da " + actor
+                    + " · balance: `" + town.getAccount().getHoldingBalance() + "`");
             return;
         }
         String amountFormat = plugin.configuration().getString("messages.BankEmbed.AmountFormat", "%.2f");
@@ -352,7 +366,7 @@ public final class TDCManager {
         placeholders.put("balance", formattedBalance);
         placeholders.put("actor", safe(actor, "Sistema"));
         placeholders.put("player", safe(actor, "Sistema"));
-        placeholders.put("reason", safe(reason, "Non specificato"));
+        placeholders.put("reason", safe(reason, "Not given"));
         placeholders.put("residents", String.valueOf(town.getNumResidents()));
         placeholders.put("tax", String.valueOf(town.getTaxes()));
 
@@ -380,8 +394,8 @@ public final class TDCManager {
         }
         Map<String, String> placeholders = new LinkedHashMap<>();
         placeholders.put("town", town.getName());
-        placeholders.put("mayor", safe(mayor == null ? null : mayor.getName(), "Nessuno"));
-        placeholders.put("nation", safe(nation == null ? null : nation.getName(), "Nessuna"));
+        placeholders.put("mayor", safe(mayor == null ? null : mayor.getName(), "Nobody"));
+        placeholders.put("nation", safe(nation == null ? null : nation.getName(), "None"));
         placeholders.put("residents", String.valueOf(town.getNumResidents()));
         placeholders.put("balance", balance);
         placeholders.put("tax", String.valueOf(town.getTaxes()));
@@ -396,9 +410,9 @@ public final class TDCManager {
                 ensurePublicTextChannel(town.getName(), townTextCategoryId(), role)).thenAccept(channel -> {
             var message = channel.sendMessageEmbeds(embed);
             if (plugin.configuration().getBoolean("messages.DailySummaryButtons.Enabled", true)) {
-                String taxes = plugin.configuration().getString("messages.DailySummaryButtons.TaxesLabel", "Tasse");
-                String residents = plugin.configuration().getString("messages.DailySummaryButtons.ResidentsLabel", "Residenti");
-                String outposts = plugin.configuration().getString("messages.DailySummaryButtons.OutpostsLabel", "Avamposti");
+                String taxes = plugin.configuration().getString("messages.DailySummaryButtons.TaxesLabel", "Taxes");
+                String residents = plugin.configuration().getString("messages.DailySummaryButtons.ResidentsLabel", "Residents");
+                String outposts = plugin.configuration().getString("messages.DailySummaryButtons.OutpostsLabel", "Outposts");
                 message.setActionRow(Button.primary("tdc:taxes:" + town.getName(), taxes),
                         Button.secondary("tdc:residents:" + town.getName() + ":0", residents),
                         Button.success("tdc:outposts:" + town.getName() + ":0", outposts));
@@ -412,14 +426,14 @@ public final class TDCManager {
         if (!plugin.configuration().getBoolean("discord.SlashCommands.Enabled", true)) return;
         Guild guild = guild();
         if (guild == null) return;
-        guild.upsertCommand(new CommandData("town", "TownyDiscordChat: città e sincronizzazione")
+        guild.upsertCommand(new CommandData("town", "Your town and Discord sync")
                 .addSubcommands(
-                        new SubcommandData("info", "Mostra le informazioni della tua città"),
+                        new SubcommandData("info", "Show your town's details"),
                         new SubcommandData("sync", "Sincronizza i tuoi ruoli Discord"),
-                        new SubcommandData("map", "Mostra la mappa Dynmap della tua citt\u00e0")
+                        new SubcommandData("map", "Show your town on the Dynmap map")
                                 .addOption(OptionType.STRING, "citta", "Citt\u00e0 da mostrare (solo amministratori Discord)", false),
-                        new SubcommandData("notice", "Invia un avviso nel canale della tua città")
-                                .addOption(OptionType.STRING, "messaggio", "Testo dell'avviso", true),
+                        new SubcommandData("notice", "Post a notice in your town's channel")
+                                .addOption(OptionType.STRING, "messaggio", "Notice text", true),
                         new SubcommandData("resync", "Sincronizza tutte le risorse Towny (admin Discord)")))
                 .queue(ignored -> log("Registered TownyDiscordChat slash commands."),
                         error -> warn("Could not register slash commands", error));
@@ -429,7 +443,7 @@ public final class TDCManager {
     public String handleTownSlashCommand(String discordId, String subcommand, String message, boolean discordAdministrator) {
         UUID playerId = DiscordSRV.getPlugin().getAccountLinkManager().getLinkedAccounts().get(discordId);
         if (subcommand.equals("resync")) {
-            if (!discordAdministrator) return "❌ Questo comando richiede il permesso Discord **Administrator**.";
+            if (!discordAdministrator) return "❌ This command needs the Discord **Administrator** permission.";
             synchroniseAllResources();
             synchroniseAllLinkedAccounts();
             return TDCMessages.tr(plugin, "commands.global_sync");
@@ -440,20 +454,20 @@ public final class TDCManager {
 
         return switch (subcommand) {
             case "info" -> "🏘️ **" + town.getName() + "**\n"
-                    + "Sindaco: **" + safe(town.getMayor() == null ? null : town.getMayor().getName(), "nessuno") + "**\n"
-                    + "Residenti: **" + town.getNumResidents() + "**\n"
-                    + "Saldo: **" + String.format(Locale.ROOT, "%.2f", town.getAccount().getHoldingBalance()) + "**";
+                    + "Mayor: **" + safe(town.getMayor() == null ? null : town.getMayor().getName(), "nobody") + "**\n"
+                    + "Residents: **" + town.getNumResidents() + "**\n"
+                    + "Balance: **" + String.format(Locale.ROOT, "%.2f", town.getAccount().getHoldingBalance()) + "**";
             case "sync" -> {
                 synchronisePlayer(playerId);
-                yield "✅ I tuoi ruoli Discord sono stati sincronizzati.";
+                yield "✅ Your Discord roles are synced.";
             }
             case "notice" -> {
                 if (!isTownOfficer(town, playerId)) yield TDCMessages.tr(plugin, "commands.notice_denied");
                 if (message == null || message.isBlank()) yield TDCMessages.tr(plugin, "commands.notice_missing");
-                sendTownNotification(town, "📣 **Avviso città da Discord**\n" + message);
+                sendTownNotification(town, "📣 **Town notice from Discord**\n" + message);
                 yield TDCMessages.tr(plugin, "commands.notice_sent");
             }
-            default -> "❌ Sottocomando non riconosciuto.";
+            default -> "❌ Unknown subcommand.";
         };
     }
 
@@ -492,7 +506,7 @@ public final class TDCManager {
         }
         Location spawn = target.getSpawnOrNull();
         if (spawn == null || spawn.getWorld() == null) {
-            callback.accept(DynmapTownMapRenderer.Result.error("❌ Questa città non ha uno spawn Towny valido."));
+            callback.accept(DynmapTownMapRenderer.Result.error("❌ This town doesn't have a town spawn."));
             return;
         }
         String dynmapProblem = DynmapTownMapRenderer.validateDynmapWorld(spawn.getWorld().getName());
@@ -608,7 +622,7 @@ public final class TDCManager {
         if ((mustBeLinked && playerId == null) || (mustBelongToTown && !belongs)) {
             TextChannel channel = guild() == null ? null : guild().getTextChannelById(channelId);
             if (channel != null) {
-                channel.sendMessage("⚠️ Collega il tuo account Minecraft e usa il canale della tua città.").queue();
+                channel.sendMessage("⚠️ Link your Minecraft account first (/discord link in game), and use your own town or nation channel.").queue();
             }
             return;
         }
@@ -637,45 +651,45 @@ public final class TDCManager {
     public TownButtonResponse townButtonResponse(String discordId, String channelId, String townName,
                                                    String action, int page, boolean townButtonAdministrator) {
         Town town = TownyUniverse.getInstance().getTown(townName);
-        if (town == null) return TownButtonResponse.error("La città non esiste più.");
+        if (town == null) return TownButtonResponse.error("That town doesn't exist any more.");
         TextChannel expectedChannel = publicTextChannel(town.getName(), townTextCategoryId());
         if (expectedChannel == null || !expectedChannel.getId().equals(channelId)) {
-            return TownButtonResponse.error("Questo pulsante può essere usato solo nel canale della città.");
+            return TownButtonResponse.error("This button only works in the town's channel.");
         }
         if (!townButtonAdministrator) {
             UUID playerId = DiscordSRV.getPlugin().getAccountLinkManager().getLinkedAccounts().get(discordId);
             Town currentTown = playerId == null ? null : townFor(playerId);
             if (currentTown == null || !currentTown.getName().equalsIgnoreCase(town.getName())) {
-                return TownButtonResponse.error("Il tuo account Minecraft collegato non appartiene più a questa città.");
+                return TownButtonResponse.error("Your linked Minecraft account isn't in this town any more.");
             }
         }
         return switch (action) {
             case "taxes" -> new TownButtonResponse(buildTownTaxesEmbed(town), List.of(), null);
             case "residents" -> buildTownResidentsResponse(town, page);
             case "outposts" -> buildTownOutpostsResponse(town, page);
-            default -> TownButtonResponse.error("Pulsante non riconosciuto.");
+            default -> TownButtonResponse.error("Unknown button.");
         };
     }
 
     /** Applies /town discord <feature> <enable|disable> to the player's current town. */
     public String setTownFeature(Player player, String feature, boolean enabled) {
         Town town = townFor(player.getUniqueId());
-        if (town == null) return "&cDevi appartenere a una città.";
+        if (town == null) return "&cYou need to be in a town.";
         if (!isTownOfficer(town, player.getUniqueId()) && !player.hasPermission("TownyDiscordChat.Admin")) {
-            return "&cSolo il sindaco, un vice o un amministratore può modificare queste impostazioni.";
+            return "&cOnly the mayor, an assistant or an admin can change these settings.";
         }
         String canonical = canonicalTownFeature(feature);
-        if (canonical == null) return "&cFunzione non valida. Usa &fnewday&c, &fchat &co &fjail&c.";
+        if (canonical == null) return "&cUnknown feature. Use &fnewday&c, &fchat &cor &fjail&c.";
         plugin.configuration().set(townFeaturePath(town, canonical), enabled);
         plugin.saveConfig();
-        String state = enabled ? "abilitata" : "disabilitata";
+        String state = enabled ? "enabled" : "disabled";
         String label = switch (canonical) {
-            case "NewDay" -> "Riepilogo NewDay";
+            case "NewDay" -> "New day summary";
             case "Chat" -> "Chat bridge";
-            case "Jail" -> "Notifiche jail";
+            case "Jail" -> "Jail alerts";
             default -> canonical;
         };
-        return "&a" + label + " " + state + " per &f" + town.getName() + "&a.";
+        return "&a" + label + " " + state + " for &f" + town.getName() + "&a.";
     }
 
     public boolean isTownFeatureEnabled(Town town, String feature) {
@@ -741,7 +755,7 @@ public final class TDCManager {
         if (guild == null) return false;
         setTownChannelsDisabled(town.getName(), true);
         deleteText(guild, town.getName(), townTextCategoryId());
-        guild.getVoiceChannelsByName(town.getName(), true).stream()
+        guild.getVoiceChannelsByName(nm(town.getName(), townVoiceCategoryId()), true).stream()
                 .filter(channel -> matchesCategory(channel.getParent(), townVoiceCategoryId()))
                 .forEach(channel -> channel.delete().queue());
         removeLegacyStaffChannels(town.getName());
@@ -842,12 +856,13 @@ public final class TDCManager {
         }
     }
 
-    private CompletableFuture<TextChannel> ensureTextChannel(String name, String categoryId, Role role, Set<String> members) {
+    private CompletableFuture<TextChannel> ensureTextChannel(String rawName, String categoryId, Role role, Set<String> members) {
         Guild guild = guild();
         if (guild == null) {
             return CompletableFuture.failedFuture(new IllegalStateException("Discord guild unavailable"));
         }
-        TextChannel existing = publicTextChannel(name, categoryId);
+        TextChannel existing = publicTextChannel(rawName, categoryId);
+        String name = nm(rawName, categoryId);
         if (existing != null) {
             updateMemberAccess(existing, members);
             return CompletableFuture.completedFuture(existing);
@@ -870,25 +885,27 @@ public final class TDCManager {
             for (String memberId : members) {
                 action.addMemberPermissionOverride(Long.parseLong(memberId), allowView, 0L);
             }
-            Category category = category(guild, categoryId);
-            if (category != null) {
-                action.setParent(category);
-            }
-            action.queue(channel -> {
-                pendingChannels.remove(key);
-                updateMemberAccess(channel, members);
-                log("Created Discord text channel " + name);
-                future.complete(channel);
-            }, error -> {
-                pendingChannels.remove(key);
-                warn("Could not create Discord text channel " + name, error);
-                future.completeExceptionally(error);
+            categoryFor(guild, categoryId).whenComplete((category, ignoredError) -> {
+                if (category != null) {
+                    action.setParent(category);
+                }
+                action.queue(channel -> {
+                    pendingChannels.remove(key);
+                    updateMemberAccess(channel, members);
+                    log("Created Discord text channel " + name);
+                    future.complete(channel);
+                }, error -> {
+                    pendingChannels.remove(key);
+                    warn("Could not create Discord text channel " + name, error);
+                    future.completeExceptionally(error);
+                });
             });
             return future;
         });
     }
 
-    private void ensureVoiceChannel(String name, String categoryId, Role role) {
+    private void ensureVoiceChannel(String rawName, String categoryId, Role role) {
+        String name = nm(rawName, categoryId);
         Guild guild = guild();
         if (guild == null || guild.getVoiceChannelsByName(name, true).stream().anyMatch(channel -> matchesCategory(channel.getParent(), categoryId))) {
             return;
@@ -942,14 +959,15 @@ public final class TDCManager {
             // Rename channels by the existing role permission first. This also
             // works when another plugin has already changed the channel name.
             String roleId = role.getId();
+            String textTo = nm(newName, textCategory), voiceTo = nm(newName, voiceCategory);
             guild.getTextChannels().stream()
                     .filter(channel -> matchesCategory(channel.getParent(), textCategory))
                     .filter(channel -> hasRoleOverride(channel, roleId))
-                    .forEach(channel -> channel.getManager().setName(newName).queue());
+                    .forEach(channel -> channel.getManager().setName(textTo).queue());
             guild.getVoiceChannels().stream()
                     .filter(channel -> matchesCategory(channel.getParent(), voiceCategory))
                     .filter(channel -> hasRoleOverride(channel, roleId))
-                    .forEach(channel -> channel.getManager().setName(newName).queue());
+                    .forEach(channel -> channel.getManager().setName(voiceTo).queue());
             role.getManager().setName(newRole).queue();
         }
         renameText(guild, oldName, newName, textCategory);
@@ -994,19 +1012,21 @@ public final class TDCManager {
         Role role = roleByName(guild, roleName);
         if (role != null) role.delete().queue();
         deleteText(guild, name, textCategory);
-        guild.getVoiceChannelsByName(name, true).stream().filter(channel -> matchesCategory(channel.getParent(), voiceCategory)).forEach(channel -> channel.delete().queue());
+        guild.getVoiceChannelsByName(nm(name, voiceCategory), true).stream().filter(channel -> matchesCategory(channel.getParent(), voiceCategory)).forEach(channel -> channel.delete().queue());
     }
 
     private void renameText(Guild guild, String oldName, String newName, String categoryId) {
-        guild.getTextChannelsByName(oldName, true).stream().filter(channel -> matchesCategory(channel.getParent(), categoryId)).forEach(channel -> channel.getManager().setName(newName).queue());
+        String to = nm(newName, categoryId);
+        guild.getTextChannelsByName(nm(oldName, categoryId), true).stream().filter(channel -> matchesCategory(channel.getParent(), categoryId)).forEach(channel -> channel.getManager().setName(to).queue());
     }
 
     private void renameVoice(Guild guild, String oldName, String newName, String categoryId) {
-        guild.getVoiceChannelsByName(oldName, true).stream().filter(channel -> matchesCategory(channel.getParent(), categoryId)).forEach(channel -> channel.getManager().setName(newName).queue());
+        String to = nm(newName, categoryId);
+        guild.getVoiceChannelsByName(nm(oldName, categoryId), true).stream().filter(channel -> matchesCategory(channel.getParent(), categoryId)).forEach(channel -> channel.getManager().setName(to).queue());
     }
 
     private void deleteText(Guild guild, String name, String categoryId) {
-        guild.getTextChannelsByName(name, true).stream().filter(channel -> matchesCategory(channel.getParent(), categoryId)).forEach(channel -> channel.delete().queue());
+        guild.getTextChannelsByName(nm(name, categoryId), true).stream().filter(channel -> matchesCategory(channel.getParent(), categoryId)).forEach(channel -> channel.delete().queue());
     }
 
     private Town townForPublicChannel(String channelId) {
@@ -1027,7 +1047,8 @@ public final class TDCManager {
         return null;
     }
 
-    private TextChannel publicTextChannel(String name, String categoryId) {
+    private TextChannel publicTextChannel(String rawName, String categoryId) {
+        String name = nm(rawName, categoryId);
         Guild guild = guild();
         if (guild == null) return null;
         return guild.getTextChannelsByName(name, true).stream()
@@ -1100,8 +1121,8 @@ public final class TDCManager {
         if (section == null) {
             return embed.setTitle("🏦 Movimento banca — " + placeholders.get("town"))
                     .addField("Operazione", placeholders.get("type"), true)
-                    .addField("Importo", placeholders.get("amount"), true)
-                    .addField("Saldo", placeholders.get("balance"), true)
+                    .addField("Amount", placeholders.get("amount"), true)
+                    .addField("Balance", placeholders.get("balance"), true)
                     .addField("Eseguita da", placeholders.get("actor"), false).build();
         }
         String title = configText(section.getString("Title", ""), placeholders, context);
@@ -1139,10 +1160,10 @@ public final class TDCManager {
         ConfigurationSection section = plugin.configuration().getConfigurationSection("messages.DailySummaryEmbed");
         EmbedBuilder embed = new EmbedBuilder();
         if (section == null) {
-            return embed.setTitle("📊 Riepilogo giornaliero — " + placeholders.get("town"))
-                    .addField("Sindaco", placeholders.get("mayor"), true)
-                    .addField("Residenti", placeholders.get("residents"), true)
-                    .addField("Saldo", placeholders.get("balance"), true)
+            return embed.setTitle("📊 Daily summary — " + placeholders.get("town"))
+                    .addField("Mayor", placeholders.get("mayor"), true)
+                    .addField("Residents", placeholders.get("residents"), true)
+                    .addField("Balance", placeholders.get("balance"), true)
                     .build();
         }
         String title = configText(section.getString("Title", ""), placeholders, context);
@@ -1190,10 +1211,10 @@ public final class TDCManager {
         values.put("commercial_tax", formatMoney(town.getCommercialPlotTax(), amountFormat));
         values.put("embassy_tax", formatMoney(town.getEmbassyPlotTax(), amountFormat));
         values.put("nation_tax", formatMoney(nation == null ? 0D : nation.getTaxes(), amountFormat));
-        values.put("nation", nation == null ? "Nessuna" : nation.getName());
+        values.put("nation", nation == null ? "None" : nation.getName());
         Resident mayor = town.getMayor();
         org.bukkit.OfflinePlayer context = mayor == null ? null : Bukkit.getOfflinePlayer(mayor.getUUID());
-        return buildConfiguredEmbed(root, values, context, "💰 Tasse — " + town.getName());
+        return buildConfiguredEmbed(root, values, context, "💰 Taxes — " + town.getName());
     }
 
     private TownButtonResponse buildTownResidentsResponse(Town town, int requestedPage) {
@@ -1208,12 +1229,12 @@ public final class TDCManager {
         int from = page * pageSize;
         int to = Math.min(residents.size(), from + pageSize);
         String entryTemplate = plugin.configuration().getString(root + ".EntryFormat",
-                "• **%resident%** — %roles%\n  Ultimo accesso: %last_seen%");
+                "• **%resident%** — %roles%\n  Last seen: %last_seen%");
         List<String> entries = new ArrayList<>();
         for (Resident resident : residents.subList(from, to)) {
             List<String> roles = new ArrayList<>();
             if (town.isMayor(resident)) {
-                roles.add(plugin.configuration().getString(root + ".MayorLabel", "Sindaco"));
+                roles.add(plugin.configuration().getString(root + ".MayorLabel", "Mayor"));
             }
             roles.addAll(resident.getTownRanks());
             if (roles.isEmpty()) roles.add(plugin.configuration().getString(root + ".ResidentLabel", "Residente"));
@@ -1237,13 +1258,13 @@ public final class TDCManager {
         }
         Map<String, String> values = new LinkedHashMap<>();
         values.put("town", town.getName());
-        values.put("entries", entries.isEmpty() ? "Nessun residente." : String.join("\n", entries));
+        values.put("entries", entries.isEmpty() ? "No residents." : String.join("\n", entries));
         values.put("page", String.valueOf(page + 1));
         values.put("pages", String.valueOf(pages));
         values.put("residents", String.valueOf(residents.size()));
         Resident mayor = town.getMayor();
         org.bukkit.OfflinePlayer context = mayor == null ? null : Bukkit.getOfflinePlayer(mayor.getUUID());
-        MessageEmbed embed = buildConfiguredEmbed(root, values, context, "👥 Residenti — " + town.getName());
+        MessageEmbed embed = buildConfiguredEmbed(root, values, context, "👥 Residents — " + town.getName());
         String previous = plugin.configuration().getString(root + ".PreviousLabel", "◀ Precedente");
         String next = plugin.configuration().getString(root + ".NextLabel", "Successiva ▶");
         List<Button> buttons = List.of(
@@ -1279,13 +1300,13 @@ public final class TDCManager {
         int to = Math.min(entries.size(), from + pageSize);
         Map<String, String> values = new LinkedHashMap<>();
         values.put("town", town.getName());
-        values.put("entries", entries.isEmpty() ? plugin.configuration().getString(root + ".EmptyText", "Nessun avamposto registrato.") : String.join("\n", entries.subList(from, to)));
+        values.put("entries", entries.isEmpty() ? plugin.configuration().getString(root + ".EmptyText", "No outposts.") : String.join("\n", entries.subList(from, to)));
         values.put("page", String.valueOf(page + 1));
         values.put("pages", String.valueOf(pages));
         values.put("outposts", String.valueOf(entries.size()));
         Resident mayor = town.getMayor();
         MessageEmbed embed = buildConfiguredEmbed(root, values,
-                mayor == null ? null : Bukkit.getOfflinePlayer(mayor.getUUID()), "🏕️ Avamposti — " + town.getName());
+                mayor == null ? null : Bukkit.getOfflinePlayer(mayor.getUUID()), "🏕️ Outposts — " + town.getName());
         String previous = plugin.configuration().getString(root + ".PreviousLabel", "◀ Precedente");
         String next = plugin.configuration().getString(root + ".NextLabel", "Successiva ▶");
         List<Button> buttons = List.of(
@@ -1348,10 +1369,10 @@ public final class TDCManager {
         org.bukkit.OfflinePlayer context = Bukkit.getOfflinePlayer(playerId);
         EmbedBuilder embed = new EmbedBuilder();
         if (section == null) {
-            return embed.setTitle("🧰 Oggetto mostrato da " + playerName)
+            return embed.setTitle("🧰 Item shown by " + playerName)
                     .setDescription(item.displayName())
-                    .addField("Materiale", item.itemKey(), true)
-                    .addField("Quantità", String.valueOf(item.amount()), true).build();
+                    .addField("Item", item.itemKey(), true)
+                    .addField("Amount", String.valueOf(item.amount()), true).build();
         }
         String title = configText(section.getString("Title", ""), placeholders, context);
         String description = configText(section.getString("Description", ""), placeholders, context);
@@ -1406,10 +1427,66 @@ public final class TDCManager {
         return plugin.configuration().getBoolean("bridge.Enabled", true) && plugin.configuration().getBoolean("bridge." + direction, true);
     }
 
-    private String townTextCategoryId() { return categoryId("town.UseCategoryForText", "town.TextCategoryId"); }
-    private String townVoiceCategoryId() { return categoryId("town.UseCategoryForVoice", "town.VoiceCategoryId"); }
-    private String nationTextCategoryId() { return categoryId("nation.UseCategoryForText", "nation.TextCategoryId"); }
-    private String nationVoiceCategoryId() { return categoryId("nation.UseCategoryForVoice", "nation.VoiceCategoryId"); }
+    private String townTextCategoryId() { return sharedCategory() ? SHARED_TOWN : categoryId("town.UseCategoryForText", "town.TextCategoryId"); }
+    private String townVoiceCategoryId() { return sharedCategory() ? SHARED_TOWN : categoryId("town.UseCategoryForVoice", "town.VoiceCategoryId"); }
+    private String nationTextCategoryId() { return sharedCategory() ? SHARED_NATION : categoryId("nation.UseCategoryForText", "nation.TextCategoryId"); }
+    private String nationVoiceCategoryId() { return sharedCategory() ? SHARED_NATION : categoryId("nation.UseCategoryForVoice", "nation.VoiceCategoryId"); }
+
+    private boolean sharedCategory() { return plugin.configuration().getBoolean("category.Shared", false); }
+    private String sharedCategoryName() { return plugin.configuration().getString("category.Name", "Towns & Nations"); }
+    private boolean isShared(String categoryId) { return SHARED_TOWN.equals(categoryId) || SHARED_NATION.equals(categoryId); }
+
+    /** The Discord channel name for a town or nation: town-<name> / nation-<name> in the shared category. */
+    private String nm(String name, String categoryId) {
+        if (SHARED_TOWN.equals(categoryId)) return TOWN_PREFIX + name;
+        if (SHARED_NATION.equals(categoryId)) return NATION_PREFIX + name;
+        return name;
+    }
+
+    /** "Towns & Nations", "Towns & Nations 2", ... */
+    private boolean isManagedCategory(Category category) {
+        if (category == null) return false;
+        String base = sharedCategoryName();
+        String name = category.getName();
+        return name.equalsIgnoreCase(base) || name.toLowerCase(Locale.ROOT).matches(java.util.regex.Pattern.quote(base.toLowerCase(Locale.ROOT)) + " \\d+");
+    }
+
+    private List<Category> managedCategories(Guild guild) {
+        return guild.getCategories().stream().filter(this::isManagedCategory)
+                .sorted(Comparator.comparingInt(Category::getPositionRaw)).collect(java.util.stream.Collectors.toList());
+    }
+
+    /** The first shared category with room for another channel, or null if all are full (or none exists yet). */
+    private Category categoryWithRoom(Guild guild) {
+        for (Category category : managedCategories(guild)) {
+            if (category.getChannels().size() < CATEGORY_LIMIT) return category;
+        }
+        return null;
+    }
+
+    /** A category to put a new channel in; for the shared category this creates the next one when they're all full. */
+    private CompletableFuture<Category> categoryFor(Guild guild, String categoryId) {
+        if (!isShared(categoryId)) return CompletableFuture.completedFuture(category(guild, categoryId));
+        Category room = categoryWithRoom(guild);
+        if (room != null) return CompletableFuture.completedFuture(room);
+        CompletableFuture<Category> mine = new CompletableFuture<>();
+        CompletableFuture<Category> running = creatingCategory.compareAndExchange(null, mine);
+        if (running != null) return running;
+        int existing = managedCategories(guild).size();
+        String name = existing == 0 ? sharedCategoryName() : sharedCategoryName() + " " + (existing + 1);
+        guild.createCategory(name)
+                .addRolePermissionOverride(guild.getPublicRole().getIdLong(), 0L, Permission.VIEW_CHANNEL.getRawValue())
+                .queue(category -> {
+                    creatingCategory.set(null);
+                    log("Created Discord category " + name);
+                    mine.complete(category);
+                }, error -> {
+                    creatingCategory.set(null);
+                    warn("Could not create Discord category " + name, error);
+                    mine.complete(null);
+                });
+        return mine;
+    }
 
     private String categoryId(String enabledPath, String idPath) {
         if (!plugin.configuration().getBoolean(enabledPath, true)) return null;
@@ -1419,12 +1496,14 @@ public final class TDCManager {
 
     private Category category(Guild guild, String id) {
         if (id == null) return null;
+        if (isShared(id)) return categoryWithRoom(guild);
         Category category = guild.getCategoryById(id);
         if (category == null) warn("Configured Discord category " + id + " does not exist; creating the channel without a category.", null);
         return category;
     }
 
     private boolean matchesCategory(Category parent, String expectedId) {
+        if (isShared(expectedId)) return isManagedCategory(parent);
         return expectedId == null || (parent != null && parent.getId().equals(expectedId));
     }
 

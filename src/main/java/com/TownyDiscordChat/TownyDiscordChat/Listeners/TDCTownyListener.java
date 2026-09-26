@@ -87,7 +87,7 @@ public final class TDCTownyListener implements Listener {
         try {
             townyMessage = Translatable.of("msg_new_town", mayorName, town.getName()).translate();
         } catch (RuntimeException | LinkageError ignored) {
-            townyMessage = mayorName + " ha creato una nuova città chiamata " + town.getName();
+            townyMessage = mayorName + " founded a new town called " + town.getName();
         }
         plugin.manager().sendTownCreatedMessage(town, TDCMessages.strip(townyMessage));
         if (mayor != null) synchroniseNextTick(mayor.getUUID());
@@ -110,7 +110,7 @@ public final class TDCTownyListener implements Listener {
         boolean disable = words[3].equalsIgnoreCase("disable") || words[3].equalsIgnoreCase("disabilita")
                 || words[3].equalsIgnoreCase("off");
         if (!enable && !disable) {
-            TDCMessages.send(event.getPlayer(), plugin, "&cStato non valido. Usa &fenable &co &fdisable&c.");
+            TDCMessages.send(event.getPlayer(), plugin, "&cInvalid state. Use &fenable &cor &fdisable&c.");
             return;
         }
         TDCMessages.send(event.getPlayer(), plugin,
@@ -134,7 +134,7 @@ public final class TDCTownyListener implements Listener {
         Resident resident = TownyUniverse.getInstance().getResident(event.getPlayer().getUniqueId());
         Town town = resident == null ? null : resident.getTownOrNull();
         if (town == null) return;
-        String reason = java.util.Arrays.asList(words).contains("withdraw") ? "Prelievo manuale" : "Deposito manuale";
+        String reason = java.util.Arrays.asList(words).contains("withdraw") ? "Manual withdrawal" : "Deposito manuale";
         pendingManualBankActions.put(town.getName().toLowerCase(Locale.ROOT),
                 new ActorHint(event.getPlayer().getName(), reason, System.currentTimeMillis() + 10_000L));
     }
@@ -356,7 +356,7 @@ public final class TDCTownyListener implements Listener {
             case "jail" -> {
                 Object hoursValue = firstObject(event, "getJailHours", "getHours");
                 String duration = hoursValue instanceof Number number && number.intValue() > 0
-                        ? " per **" + number.intValue() + " ore**" : "";
+                        ? " for **" + number.intValue() + " hours**" : "";
                 plugin.manager().sendTownNotification(town, TDCMessages.tr(plugin, "events.jail", Map.of("resident", residentName, "duration", duration)));
             }
             case "unjail" -> plugin.manager().sendTownNotification(town, TDCMessages.tr(plugin, "events.unjail", Map.of("resident", residentName)));
@@ -383,8 +383,8 @@ public final class TDCTownyListener implements Listener {
             Resident target = TownyUniverse.getInstance().getResident(targetName);
             if (target == null || town.hasOutlaw(target) != add) return;
             String message = add
-                    ? "⚖️ **Fuorilegge:** " + target.getName() + " è stato aggiunto ai fuorilegge."
-                    : "⚖️ **Fuorilegge:** " + target.getName() + " è stato rimosso dai fuorilegge.";
+                    ? "⚖️ **Outlaw:** " + target.getName() + " was added to the outlaws."
+                    : "⚖️ **Outlaw:** " + target.getName() + " was removed from the outlaws.";
             plugin.manager().sendTownNotification(town, message);
         });
     }
@@ -445,13 +445,13 @@ public final class TDCTownyListener implements Listener {
     private String normaliseReason(String typeName, String rawReason, ActorHint hint) {
         String raw = rawReason == null ? "" : rawReason.trim();
         String lower = raw.toLowerCase(Locale.ROOT);
-        if (lower.contains("tax") || lower.contains("tassa")) return "Tasse";
-        if (!raw.isBlank() && !raw.equalsIgnoreCase("Non specificato")) return raw;
+        if (lower.contains("tax") || lower.contains("tassa")) return "Taxes";
+        if (!raw.isBlank() && !raw.equalsIgnoreCase("Not given")) return raw;
         if (hint != null) return hint.reason();
-        if (System.currentTimeMillis() <= taxCollectionWindowEnds && isDeposit(typeName)) return "Tasse";
+        if (System.currentTimeMillis() <= taxCollectionWindowEnds && isDeposit(typeName)) return "Taxes";
         if (isDeposit(typeName)) return "Deposito manuale";
         if (typeName.toLowerCase(Locale.ROOT).contains("withdraw") || typeName.toLowerCase(Locale.ROOT).contains("preliev")) {
-            return "Prelievo manuale";
+            return "Manual withdrawal";
         }
         return "Operazione Towny";
     }
@@ -497,7 +497,7 @@ public final class TDCTownyListener implements Listener {
             value = textOf(call(second, method));
             if (value != null) return value;
         }
-        return "Non specificato";
+        return "Not given";
     }
 
     private String textOf(Object value) {

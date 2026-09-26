@@ -60,14 +60,14 @@ public final class TDCCommand implements CommandExecutor {
             String target = args[2];
             if (target.equalsIgnoreCase("all")) {
                 int count = plugin.manager().deleteAllTownChannels();
-                TDCMessages.send(sender, plugin, "&aEliminazione avviata per i canali di " + count + " città. I ruoli sono stati mantenuti.");
+                TDCMessages.send(sender, plugin, "&aDeleting the channels of " + count + " towns. The roles were kept.");
                 return true;
             }
             if (!plugin.manager().deleteTownChannels(target)) {
-                TDCMessages.send(sender, plugin, "&cCittà non trovata o Discord non disponibile: &f" + target);
+                TDCMessages.send(sender, plugin, "&cTown not found or Discord unavailable: &f" + target);
                 return true;
             }
-            TDCMessages.send(sender, plugin, "&aEliminazione dei canali di &f" + target + " &aavviata. Il ruolo è stato mantenuto.");
+            TDCMessages.send(sender, plugin, "&aDeleting the channels of &f" + target + "&a. The role was kept.");
             return true;
         }
 
@@ -81,14 +81,14 @@ public final class TDCCommand implements CommandExecutor {
             String target = args[2];
             if (target.equalsIgnoreCase("all")) {
                 int count = plugin.manager().restoreAllTownChannels();
-                TDCMessages.send(sender, plugin, "&aRipristino avviato per i canali di " + count + " città.");
+                TDCMessages.send(sender, plugin, "&aRestoring the channels of " + count + " towns.");
                 return true;
             }
             if (!plugin.manager().restoreTownChannels(target)) {
-                TDCMessages.send(sender, plugin, "&cCittà non trovata: &f" + target);
+                TDCMessages.send(sender, plugin, "&cTown not found: &f" + target);
                 return true;
             }
-            TDCMessages.send(sender, plugin, "&aRipristino dei canali di &f" + target + " &aavviato.");
+            TDCMessages.send(sender, plugin, "&aRestoring the channels of &f" + target + "&a.");
             return true;
         }
 
@@ -100,7 +100,7 @@ public final class TDCCommand implements CommandExecutor {
                 return runAdmin(sender, "TownyDiscordChat.Check.Role.CreateAllTownsAndNations", plugin.manager()::synchroniseAllResources);
             }
             if (!(sender instanceof Player player)) {
-                TDCMessages.send(sender, plugin, "&cQuesto controllo richiede un giocatore collegato.");
+                TDCMessages.send(sender, plugin, "&cThis check needs a linked player.");
                 return true;
             }
             if (!sender.hasPermission("TownyDiscordChat.Check.Role")) {
@@ -108,11 +108,11 @@ public final class TDCCommand implements CommandExecutor {
                 return true;
             }
             if (!plugin.manager().isLinked(player.getUniqueId())) {
-                TDCMessages.send(player, plugin, "&cCollega prima Discord con &f/discord link&c.");
+                TDCMessages.send(player, plugin, "&cLink your Discord first with &f/discord link&c.");
                 return true;
             }
             plugin.manager().synchronisePlayer(player.getUniqueId());
-            TDCMessages.send(player, plugin, "&7Verifica dei ruoli avviata.");
+            TDCMessages.send(player, plugin, "&7Checking your roles.");
             return true;
         }
 

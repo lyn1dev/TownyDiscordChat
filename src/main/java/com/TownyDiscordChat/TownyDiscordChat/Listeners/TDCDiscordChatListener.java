@@ -72,7 +72,7 @@ public final class TDCDiscordChatListener extends ListenerAdapter {
         // keeps both Discord component IDs unique even on a single-page list.
         String[] parts = id.split(":", 5);
         if (parts.length < 3) {
-            event.reply("Pulsante non valido o scaduto.").setEphemeral(true).queue();
+            event.reply("This button isn't valid any more.").setEphemeral(true).queue();
             return;
         }
         String action = parts[1];
@@ -129,7 +129,7 @@ public final class TDCDiscordChatListener extends ListenerAdapter {
         if (!event.getName().equals("town")) return;
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
-            event.reply("❌ Sottocomando mancante.").setEphemeral(true).queue();
+            event.reply("❌ Missing subcommand.").setEphemeral(true).queue();
             return;
         }
         String message = event.getOption("messaggio") == null ? null : event.getOption("messaggio").getAsString();
@@ -143,7 +143,7 @@ public final class TDCDiscordChatListener extends ListenerAdapter {
                             return;
                         }
                         event.getChannel().sendFile(result.image().toFile(), "dynmap-" + result.town() + ".png")
-                                .content("🗺️ **" + result.town() + "** · mappa Dynmap dall'alto")
+                                .content("🗺️ **" + result.town() + "** · Dynmap map from above")
                                 .queue(ignored -> {
                                     try {
                                         Files.deleteIfExists(result.image());
@@ -157,7 +157,7 @@ public final class TDCDiscordChatListener extends ListenerAdapter {
                                         // The temporary map can safely be cleaned on a later request.
                                     }
                                 });
-                        hook.editOriginal("✅ Mappa Dynmap inviata nel canale.").queue();
+                        hook.editOriginal("✅ Dynmap map sent to the channel.").queue();
                     })));
             return;
         }

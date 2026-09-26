@@ -5,7 +5,7 @@
 
     <groupId>me.james</groupId>
     <artifactId>TownyDiscordChat</artifactId>
-    <version>3.2.4-1.21+-26+</version>
+    <version>3.2.4-meridian.1</version>
     <packaging>jar</packaging>
 
     <name>TownyDiscordChat</name>
@@ -44,6 +44,10 @@
 
     <repositories>
         <repository>
+            <id>minecraft-libraries</id>
+            <url>https://libraries.minecraft.net/</url>
+        </repository>
+        <repository>
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
             <releases><enabled>false</enabled></releases>
@@ -63,21 +67,21 @@
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.21.1-R0.1-SNAPSHOT</version>
+            <version>1.21.11-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>com.palmergames.bukkit.towny</groupId>
             <artifactId>Towny</artifactId>
-            <version>0.103.0.0</version>
+            <version>0.103.2.0</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>com.discordsrv</groupId>
             <artifactId>discordsrv</artifactId>
-            <version>1.30.4</version>
+            <version>1.30.5</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
