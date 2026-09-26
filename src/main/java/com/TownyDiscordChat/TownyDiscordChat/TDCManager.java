@@ -97,7 +97,7 @@ public final class TDCManager {
         Guild guild = guild();
         if (guild == null) return 0;
         Set<String> towns = TownyUniverse.getInstance().getTowns().stream()
-                .map(Town::getName).map(this::normalise).collect(java.util.stream.Collectors.toSet());
+                .filter(town -> !hidden(town)).map(Town::getName).map(this::normalise).collect(java.util.stream.Collectors.toSet());
         Set<String> nations = TownyUniverse.getInstance().getNations().stream()
                 .map(Nation::getName).map(this::normalise).collect(java.util.stream.Collectors.toSet());
         int[] removed = {0};
@@ -197,7 +197,13 @@ public final class TDCManager {
         }
     }
 
+    /** Towns hidden from Towny's top lists (Meridian's admin towns, like the Eden spawn town) get nothing on Discord. */
+    public static boolean hidden(Town town) {
+        return town != null && !town.isVisibleOnTopLists();
+    }
+
     public void ensureTownResources(Town town) {
+        if (hidden(town)) return;
         String townName = town.getName();
         removeLegacyStaffChannels(townName);
         ensureRole(TOWN_PREFIX + townName, true).thenAccept(role -> {
@@ -230,6 +236,7 @@ public final class TDCManager {
 
     /** Sends a notification to the normal text channel of the town. */
     public void sendTownNotification(Town town, String message) {
+        if (hidden(town)) return;
         if (areTownChannelsDisabled(town.getName())) return;
         ensureRole(TOWN_PREFIX + town.getName(), true).thenCompose(role ->
                 ensurePublicTextChannel(town.getName(), townTextCategoryId(), role)).thenAccept(channel ->

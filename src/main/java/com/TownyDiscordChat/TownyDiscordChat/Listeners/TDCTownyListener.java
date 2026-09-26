@@ -56,6 +56,7 @@ public final class TDCTownyListener implements Listener {
     public void onPreNewDay(PreNewDayEvent event) {
         preNewDayTownSnapshots.clear();
         for (Town town : TownyUniverse.getInstance().getTowns()) {
+            if (com.TownyDiscordChat.TownyDiscordChat.TDCManager.hidden(town)) continue;
             preNewDayTownSnapshots.put(town.getName().toLowerCase(Locale.ROOT),
                     plugin.manager().captureTownFallSnapshot(town));
         }
@@ -545,6 +546,7 @@ public final class TDCTownyListener implements Listener {
 
     private void publishDailyReports() {
         for (Town town : TownyUniverse.getInstance().getTowns()) {
+            if (com.TownyDiscordChat.TownyDiscordChat.TDCManager.hidden(town)) continue;
             plugin.manager().refreshTownStaff(town);
             plugin.manager().sendTownDailySummary(town);
         }
