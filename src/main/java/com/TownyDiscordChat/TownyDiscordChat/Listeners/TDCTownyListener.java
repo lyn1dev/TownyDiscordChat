@@ -159,7 +159,7 @@ public final class TDCTownyListener implements Listener {
     @EventHandler
     public void onTownMemberAdded(TownAddResidentEvent event) {
         Town town = event.getTown();
-        plugin.manager().ensureTownResources(town);
+        plugin.manager().refreshTown(town);
         plugin.manager().refreshTownStaff(town);
         plugin.manager().sendTownNotification(town, TDCMessages.tr(plugin, "events.resident_joined", Map.of("resident", event.getResident().getName())));
         synchroniseNextTick(event.getResident().getUUID());
@@ -175,7 +175,7 @@ public final class TDCTownyListener implements Listener {
 
     @EventHandler
     public void onTownJoinsNation(NationAddTownEvent event) {
-        plugin.manager().ensureNationResources(event.getNation());
+        plugin.manager().refreshNation(event.getNation());
         plugin.manager().sendTownNotification(event.getTown(), TDCMessages.tr(plugin, "events.nation_joined", Map.of("nation", event.getNation().getName())));
         event.getTown().getResidents().forEach(resident -> synchroniseNextTick(resident.getUUID()));
     }
@@ -573,6 +573,11 @@ public final class TDCTownyListener implements Listener {
     }
 
     private void synchroniseNextTick(java.util.UUID playerId) {
+        // without roles the manager batches everything that changed this tick and applies it on the next one
+        if (!plugin.manager().rolesMode()) {
+            plugin.manager().synchronisePlayer(playerId);
+            return;
+        }
         plugin.getServer().getScheduler().runTask(plugin, () -> plugin.manager().synchronisePlayer(playerId));
     }
 

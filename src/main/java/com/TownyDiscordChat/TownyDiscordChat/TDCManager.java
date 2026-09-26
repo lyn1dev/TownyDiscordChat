@@ -37,6 +37,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,6 +63,12 @@ public final class TDCManager {
     private static final String SHARED_TOWN = "@town", SHARED_NATION = "@nation";
     private static final int CATEGORY_LIMIT = 50;
     private final java.util.concurrent.atomic.AtomicReference<CompletableFuture<Category>> creatingCategory = new java.util.concurrent.atomic.AtomicReference<>();
+    // Meridian: access changes are batched per tick (see synchronisePlayer/flushAccess), and writes in flight aren't repeated
+    private final Set<String> dirtyTowns = ConcurrentHashMap.newKeySet();
+    private final Set<String> dirtyNations = ConcurrentHashMap.newKeySet();
+    private final Map<String, UUID> dirtyPlayers = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicBoolean flushQueued = new java.util.concurrent.atomic.AtomicBoolean();
+    private final Set<String> accessInFlight = ConcurrentHashMap.newKeySet();
     private final Map<String, Integer> lastTownFallVariant = new ConcurrentHashMap<>();
 
     public TDCManager(Main plugin) {
@@ -160,16 +167,10 @@ public final class TDCManager {
         if (!rolesEnabled()) {
             Town town = townFor(playerId);
             Nation nation = town == null ? null : nationFor(town);
-            Set<String> keep = new HashSet<>();
-            if (town != null) {
-                keep.add(normalise(nm(town.getName(), townTextCategoryId())));
-                ensureTownResources(town);
-            }
-            if (nation != null) {
-                keep.add(normalise(nm(nation.getName(), nationTextCategoryId())));
-                ensureNationResources(nation);
-            }
-            removeAccessExcept(discordId, keep);
+            if (town != null) dirtyTowns.add(town.getName());
+            if (nation != null) dirtyNations.add(nation.getName());
+            dirtyPlayers.put(discordId, playerId);
+            queueFlush();
             return;
         }
         Member member = guild.getMemberById(discordId);
@@ -903,9 +904,77 @@ public final class TDCManager {
         for (TextChannel channel : guild.getTextChannels()) {
             if (!isManagedChannel(channel) || keep.contains(normalise(channel.getName()))) continue;
             for (PermissionOverride override : channel.getMemberPermissionOverrides()) {
-                if (override.getId().equals(discordId)) override.delete().queue();
+                if (override.getId().equals(discordId)) writeAccess(channel.getId() + "-" + discordId, override.delete());
             }
         }
+    }
+
+    public boolean rolesMode() {
+        return rolesEnabled();
+    }
+
+    /** A town's members changed: its channel (and its nation's) is brought up to date on the next tick. */
+    public void refreshTown(Town town) {
+        if (rolesEnabled()) {
+            ensureTownResources(town);
+            return;
+        }
+        dirtyTowns.add(town.getName());
+        Nation nation = nationFor(town);
+        if (nation != null) dirtyNations.add(nation.getName());
+        queueFlush();
+    }
+
+    /** A nation's towns changed: its channel is brought up to date on the next tick. */
+    public void refreshNation(Nation nation) {
+        if (rolesEnabled()) {
+            ensureNationResources(nation);
+            return;
+        }
+        dirtyNations.add(nation.getName());
+        queueFlush();
+    }
+
+    private void queueFlush() {
+        if (flushQueued.compareAndSet(false, true)) Bukkit.getScheduler().runTask(plugin, this::flushAccess);
+    }
+
+    /**
+     * Everything that changed this tick, applied once: each dirty town and nation channel gets its member list
+     * recomputed from Towny, and each dirty player is taken out of channels they no longer belong to.
+     */
+    private void flushAccess() {
+        flushQueued.set(false);
+        for (String name : drain(dirtyTowns)) {
+            Town town = TownyUniverse.getInstance().getTown(name);
+            if (town != null) ensureTownResources(town);
+        }
+        for (String name : drain(dirtyNations)) {
+            Nation nation = TownyUniverse.getInstance().getNation(name);
+            if (nation != null) ensureNationResources(nation);
+        }
+        Map<String, UUID> players = new HashMap<>(dirtyPlayers);
+        players.keySet().forEach(dirtyPlayers::remove);
+        players.forEach((discordId, playerId) -> {
+            Town town = townFor(playerId);
+            Nation nation = town == null ? null : nationFor(town);
+            Set<String> keep = new HashSet<>();
+            if (town != null) keep.add(normalise(nm(town.getName(), townTextCategoryId())));
+            if (nation != null) keep.add(normalise(nm(nation.getName(), nationTextCategoryId())));
+            removeAccessExcept(discordId, keep);
+        });
+    }
+
+    private static List<String> drain(Set<String> set) {
+        List<String> out = new ArrayList<>(set);
+        out.forEach(set::remove);
+        return out;
+    }
+
+    /** Queues one permission write unless the same one is already on its way to Discord. */
+    private void writeAccess(String key, github.scarsz.discordsrv.dependencies.jda.api.requests.RestAction<?> action) {
+        if (!accessInFlight.add(key)) return;
+        action.queue(ok -> accessInFlight.remove(key), error -> accessInFlight.remove(key));
     }
 
     /** After an account is unlinked: out of every town and nation channel. */
@@ -1004,21 +1073,23 @@ public final class TDCManager {
             String id = override.getId();
             if (id.equals(self)) continue;
             if (!officers.contains(id)) {
-                override.delete().queue();
+                writeAccess(channel.getId() + "-" + id, override.delete());
             } else if (override.getAllowed().contains(Permission.VIEW_CHANNEL)) {
                 already.add(id);
             }
         }
         for (String memberId : officers) {
             if (already.contains(memberId)) continue;
+            String key = channel.getId() + "+" + memberId;
             Member member = guild.getMemberById(memberId);
             if (member != null) {
-                channel.upsertPermissionOverride(member).setAllow(Permission.VIEW_CHANNEL).queue();
-            } else {
+                writeAccess(key, channel.upsertPermissionOverride(member).setAllow(Permission.VIEW_CHANNEL));
+            } else if (accessInFlight.add(key)) {
                 // not cached: look them up (and skip anyone who isn't in the Discord server)
                 guild.retrieveMemberById(memberId).queue(
-                        found -> channel.upsertPermissionOverride(found).setAllow(Permission.VIEW_CHANNEL).queue(),
-                        ignored -> { });
+                        found -> channel.upsertPermissionOverride(found).setAllow(Permission.VIEW_CHANNEL)
+                                .queue(ok -> accessInFlight.remove(key), error -> accessInFlight.remove(key)),
+                        ignored -> accessInFlight.remove(key));
             }
         }
     }
