@@ -39,13 +39,10 @@ public final class Main extends JavaPlugin {
         discordSRVListener = new TDCDiscordSRVListener(this, minecraftChatListener);
         DiscordSRV.api.subscribe(discordSRVListener);
         discordChatListener = new TDCDiscordChatListener(this);
-        DiscordSRV.getPlugin().getJda().addEventListener(discordChatListener);
-        manager.registerSlashCommands();
-
-        getServer().getScheduler().runTask(this, () -> {
-            manager.synchroniseAllResources();
-            manager.synchroniseAllLinkedAccounts();
-        });
+        // DiscordSRV logs in on its own thread, so Discord may not be ready yet: attach now or once it is
+        readyListener = new ReadyListener();
+        DiscordSRV.api.subscribe(readyListener);
+        if (DiscordSRV.isReady) attachToDiscord();
         getLogger().info("TownyDiscordChat " + getDescription().getVersion() + " enabled for Paper 1.21+/26+.");
     }
 
@@ -55,10 +52,37 @@ public final class Main extends JavaPlugin {
             DiscordSRV.api.unsubscribe(discordSRVListener);
             discordSRVListener = null;
         }
-        if (discordChatListener != null && DiscordSRV.getPlugin() != null) {
+        if (readyListener != null && DiscordSRV.api != null) {
+            DiscordSRV.api.unsubscribe(readyListener);
+            readyListener = null;
+        }
+        if (discordChatListener != null && DiscordSRV.getPlugin() != null && DiscordSRV.getPlugin().getJda() != null) {
             DiscordSRV.getPlugin().getJda().removeEventListener(discordChatListener);
         }
         getLogger().info("TownyDiscordChat disabled.");
+    }
+
+    private ReadyListener readyListener;
+    private boolean attached;
+
+    /** Registers the Discord listener and slash commands and runs the first sync, once Discord is connected. */
+    private synchronized void attachToDiscord() {
+        if (attached || !isEnabled() || DiscordSRV.getPlugin().getJda() == null) return;
+        attached = true;
+        DiscordSRV.getPlugin().getJda().addEventListener(discordChatListener);
+        manager.registerSlashCommands();
+        getServer().getScheduler().runTask(this, () -> {
+            manager.synchroniseAllResources();
+            manager.synchroniseAllLinkedAccounts();
+        });
+        getLogger().info("Connected to Discord.");
+    }
+
+    public final class ReadyListener {
+        @github.scarsz.discordsrv.api.Subscribe
+        public void onReady(github.scarsz.discordsrv.api.events.DiscordReadyEvent event) {
+            getServer().getScheduler().runTask(Main.this, Main.this::attachToDiscord);
+        }
     }
 
     public TDCManager manager() {
